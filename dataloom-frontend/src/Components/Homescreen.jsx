@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadProject, getRecentProjects, deleteProject } from "../api";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./common/ConfirmDialog";
+import { validateFile, ACCEPT_STRING } from "../utils/fileValidation";
 
 const ProjectCard = ({ project, onClick, onDelete }) => {
   const modified = new Date(project.last_modified).toLocaleDateString(undefined, {
@@ -59,6 +60,7 @@ const NewProjectCard = ({ onClick }) => (
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const HomeScreen = () => {
+  const fileInputRef = useRef(null);
   const [showModal, setShowModal] = useState(false);
   const [fileUpload, setFileUpload] = useState(null);
   const [projectName, setProjectName] = useState("");
@@ -87,6 +89,12 @@ const HomeScreen = () => {
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setProjectName("");
+    setProjectDescription("");
+    setFileUpload(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleSubmitModal = async (event) => {
@@ -96,7 +104,12 @@ const HomeScreen = () => {
       showToast("Please select a file to upload", "warning");
       return;
     }
-
+    const validation = validateFile(fileUpload);
+    if (!validation.valid) {
+      showToast(validation.error, "error");
+      setFileUpload(null);
+      return;
+    }
     if (!projectName.trim()) {
       showToast("Project Name cannot be empty", "warning");
       return;
@@ -124,19 +137,34 @@ const HomeScreen = () => {
       showToast(message, "error");
     }
 
-    setShowModal(false);
+    handleCloseModal();
     fetchRecentProjects();
   };
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file && file.size > MAX_FILE_SIZE_BYTES) {
+
+    if (!file) {
+      setFileUpload(null);
+      return;
+    }
+
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      showToast(validation.error, "error");
+      event.target.value = "";
+      setFileUpload(null);
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
       showToast(`File too large (${sizeMB} MB). Maximum allowed size is 10 MB.`, "warning");
       event.target.value = "";
       setFileUpload(null);
       return;
     }
+
     setFileUpload(file);
   };
 
@@ -210,6 +238,8 @@ const HomeScreen = () => {
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Upload Dataset</h2>
             <input
               type="file"
+              accept={ACCEPT_STRING}
+              ref={fileInputRef}
               className="block w-full text-lg text-gray-900 border border-gray-300 rounded-md px-3 py-2 bg-white cursor-pointer focus:outline-none mb-4"
               onChange={handleFileUpload}
             />
